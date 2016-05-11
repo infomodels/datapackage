@@ -1,0 +1,4 @@
+care_site_id,care_site_name,care_site_source_value,location_id,place_of_service_concept_id,place_of_service_source_value,specialty_concept_id,specialty_source_value
+"1","CareSite1","Care Site One","999999999","44814650","No Information",,
+"2","CareSite2","Care Site Two","999999999","9202","Outpatient Visit","45756760","Genetics"
+"3","CareSite3","Care Site Three","999999999","9202","Outpatient Visit","45756747","Adolescent"
