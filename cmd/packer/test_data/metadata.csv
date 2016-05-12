@@ -1,4 +1,0 @@
-"organization","filename","checksum","cdm","cdm-version","table","etl","data-version"
-"org","data/location.csv","eee663c6095229e6ed62aeb3e41cc49a714b6c74eaa363454aae7e4d7cc208bd","pedsnet","2.1.0","location","https://persistentcodestorage.com/ETLScript3.sql","3"
-"org","data/care_site.csv","653e55c69802e7a5aa3838b30f6f14b49cd624c1cb7ab52831038e7ac95cc810","pedsnet","2.1.0","care_site","https://persistentcodestorage.com/ETLScript3.sql","3"
-"org","data/provider.csv","e784eeeea4b8264cf838c209034d4b8868d036f46d72789f04ac64f30853a636","pedsnet","2.1.0","provider","https://persistentcodestorage.com/ETLScript3.sql","3"

@@ -7,20 +7,14 @@ import (
 	"path/filepath"
 )
 
-// Config holds the configuration values for metadata creation and/or validation and package compression and/or decompression. The fields correspond exactly with the command line flags.
+// Config holds the configuration values for package compression and/or decompression. The fields correspond exactly with the command line flags.
 type Config struct {
-	Comp         string
-	DataVersion  string
-	DataDirPath  string
-	Etl          string
-	KeyPassPath  string
-	KeyPath      string
-	Model        string
-	ModelVersion string
-	PackagePath  string
-	Service      string
-	Site         string
-	packing      string
+	Comp        string
+	DataDirPath string
+	KeyPassPath string
+	KeyPath     string
+	PackagePath string
+	packing     string
 }
 
 type pkgExtensions struct {
