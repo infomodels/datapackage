@@ -1,32 +1,24 @@
 machine:
-  services:
-    - docker
   environment:
     # Make CircleCI specific environment variables more generic.
-    BUILD_NUM: "${CIRCLE_BUILD_NUM}"
-    COMMIT_SHA1: "${CIRCLE_SHA1}"
-    BRANCH: "${CIRCLE_BRANCH}"
-    APP_NAME: "${CIRCLE_PROJECT_REPONAME}"
     ARTIFACT_DIR: "${CIRCLE_ARTIFACTS}"
     TEST_OUTPUT_DIR: "${CIRCLE_TEST_REPORTS}"
     GO_SRC_PATH: "/home/ubuntu/.go_workspace/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
 
 dependencies:
   override:
-    # Install go dependencies, including those for testing.
-    - make test-install
     # Install coverage, coveralls integration, and html coverage dependencies.
     - go get github.com/axw/gocov/gocov
     - go get github.com/mattn/goveralls
     - go get gopkg.in/matm/v1/gocov-html
     - go get github.com/jstemmer/go-junit-report
+    - go get github.com/blang/semver
+    - go get golang.org/x/crypto/openpgp
     # Move source code to the GOPATH.
     - mkdir -p "${GO_SRC_PATH}"
     - rsync -azC --delete ./ "${GO_SRC_PATH}/"
     # Install and build the package.
-    - cd "${GO_SRC_PATH}" && go install && go build
-      -ldflags "-X packer.progBuild=${COMMIT_SHA1:0:7}"
-      -o /home/ubuntu/.go_workspace/bin/data-models-packer ./cmd/packer
+    - cd "${GO_SRC_PATH}" && go install
 
 test:
   override:
@@ -42,5 +34,5 @@ test:
     # Convert to html.
     - gocov-html "${ARTIFACT_DIR}/packer.json" > "${ARTIFACT_DIR}/packer.html"
     # Submit to coveralls.
-    - goveralls -gocovdata="${ARTIFACT_DIR}/packer.json" -service=circle-ci
+    - goveralls -coverprofile="${ARTIFACT_DIR}/packer.out" -service=circle-ci
       -repotoken="${COVERALLS_TOKEN}"
