@@ -1,9 +1,10 @@
-package packer
+package datapackage
 
 import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,9 +16,9 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
-// Next advances to the next file in the package, which will be read on the
-// next call to Package.Read.
-func (p *Package) Next() (*tar.Header, error) {
+// next advances to the next file in the package, which will be read on the
+// next call to DataPackage.Read.
+func (d *DataPackage) next() (*tar.Header, error) {
 	// The `tar` package panics on Next when there is nothing in the reader.
 	// This most often happens when the binary is invoked with no arguments and
 	// nothing on STDIN.
@@ -27,30 +28,30 @@ func (p *Package) Next() (*tar.Header, error) {
 		}
 	}()
 
-	return p.tarReader.Next()
+	return d.tarReader.Next()
 }
 
-// Read reads from the current file in the package.
-func (p *Package) Read(b []byte) (int, error) {
-	return p.tarReader.Read(b)
+// read reads from the current file in the package.
+func (d *DataPackage) read(b []byte) (int, error) {
+	return d.tarReader.Read(b)
 }
 
-// FinishUnpack closes the Unpack operation.
-func (p *Package) FinishUnpack() error {
-	if err := p.inReadCloser.Close(); err != nil {
+// finishUnpack closes the Unpack operation.
+func (d *DataPackage) finishUnpack() error {
+	if err := d.inReadCloser.Close(); err != nil {
 		return err
 	}
-  if p.keyReader != nil {
-    if err := p.keyReader.Close(); err != nil {
-      return err
-    }
-  }
+	if d.keyReader != nil {
+		if err := d.keyReader.Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // makeDecryptingReader creates a decrypting reader based on the passed reader
 // using the passed config and returns an io.ReadCloser to read from and close.
-func (p *Package) makeDecryptingReader() (io.Reader, error) {
+func (d *DataPackage) makeDecryptingReader() (io.Reader, error) {
 
 	var (
 		passReader       io.Reader
@@ -59,20 +60,20 @@ func (p *Package) makeDecryptingReader() (io.Reader, error) {
 		err              error
 	)
 
-	p.keyReader, err = os.Open(p.keyPath)
+	d.keyReader, err = os.Open(d.keyPath)
 	if err != nil {
 		return nil, err
 	}
 
 	passReader = strings.NewReader("")
 
-	if p.keyPassPath != "" {
+	if d.keyPassPath != "" {
 
-		if passFile, err = os.Open(p.keyPassPath); err != nil {
+		if passFile, err = os.Open(d.keyPassPath); err != nil {
 			return nil, err
 		}
 
-		//defer passFile.Close()
+		defer passFile.Close()
 
 		passReader = io.Reader(passFile)
 	}
@@ -82,7 +83,7 @@ func (p *Package) makeDecryptingReader() (io.Reader, error) {
 		passReader = strings.NewReader(os.Getenv("PACKER_KEYPASS"))
 	}
 
-	if decryptingReader, err = Decrypt(p.inReadCloser, p.keyReader, passReader); err != nil {
+	if decryptingReader, err = decrypt(d.inReadCloser, d.keyReader, passReader); err != nil {
 		return nil, err
 	}
 
@@ -90,43 +91,43 @@ func (p *Package) makeDecryptingReader() (io.Reader, error) {
 }
 
 // Unpack writes files from a package reader to the output directory.
-func (p *Package) Unpack(dataDirPath string) error {
+func (d *DataPackage) Unpack(dataDirPath string) error {
 
 	var err error
 
-	if p.packagePath != "" {
+	if d.packagePath != "" {
 
 		// Open the basic file reader.
-		if p.inReadCloser, err = os.Open(p.packagePath); err != nil {
+		if d.inReadCloser, err = os.Open(d.packagePath); err != nil {
 			return fmt.Errorf("Error opening package path: %v", err)
 		}
 
 	} else {
 
 		// Open the basic STDIN reader.
-		p.inReadCloser = os.Stdin
+		d.inReadCloser = os.Stdin
 
 	}
 
 	// Add decryption to the reader if necessary.
-	if p.keyPath != "" {
+	if d.keyPath != "" {
 
-		if p.encReader, err = p.makeDecryptingReader(); err != nil {
+		if d.encReader, err = d.makeDecryptingReader(); err != nil {
 			return fmt.Errorf("makeDecryptingReader() failed: %v", err)
 		}
 	}
 
 	// Add decompression to the reader.
-	if p.encReader != nil {
-		if p.gzipReader, err = gzip.NewReader(p.encReader); err != nil {
+	if d.encReader != nil {
+		if d.gzipReader, err = gzip.NewReader(d.encReader); err != nil {
 			return err
 		}
-		p.tarReader = tar.NewReader(p.gzipReader)
+		d.tarReader = tar.NewReader(d.gzipReader)
 	} else {
-		if p.gzipReader, err = gzip.NewReader(p.inReadCloser); err != nil {
+		if d.gzipReader, err = gzip.NewReader(d.inReadCloser); err != nil {
 			return err
 		}
-		p.tarReader = tar.NewReader(p.gzipReader)
+		d.tarReader = tar.NewReader(d.gzipReader)
 	}
 
 	for {
@@ -137,12 +138,13 @@ func (p *Package) Unpack(dataDirPath string) error {
 			fileDir    string
 			fileInfo   os.FileInfo
 			file       *os.File
+			buf        []byte
 			err        error
 		)
 
 		// Advance to next file in the reader or exit with success if there are
 		// no more.
-		if fileHeader, err = p.Next(); err == io.EOF {
+		if fileHeader, err = d.next(); err == io.EOF {
 			return nil
 		}
 		if err != nil {
@@ -172,22 +174,47 @@ func (p *Package) Unpack(dataDirPath string) error {
 
 		// Write file from the package reader.
 		log.Printf("packer: unpacking '%s'", filepath.Base(fileHeader.Name))
-		if _, err = io.Copy(file, p); err != nil {
+
+		buf = make([]byte, 32*1024)
+
+		for {
+			nr, er := d.read(buf)
+			if nr > 0 {
+				nw, ew := file.Write(buf[0:nr])
+				if ew != nil {
+					err = ew
+					break
+				}
+				if nr != nw {
+					err = errors.New("short write")
+					break
+				}
+			}
+			if er == io.EOF {
+				break
+			}
+			if er != nil {
+				err = er
+				break
+			}
+		}
+
+		if err != nil {
 			return err
 		}
 	}
 
-	if err = p.FinishUnpack(); err != nil {
+	if err = d.finishUnpack(); err != nil {
 		return err
 	}
 	return nil
 }
 
-// Decrypt takes a reader with encrypted data, a reader with the private key,
+// decrypt takes a reader with encrypted data, a reader with the private key,
 // and a reader with the passphrase (or an empty string if the key is
 // unprotected) and returns an io.ReadCloser that decrypts the data. It assumes
 // there is only one OpenPGP entity involved.
-func Decrypt(encReader io.Reader, keyReader io.Reader, passReader io.Reader) (io.Reader, error) {
+func decrypt(encReader io.Reader, keyReader io.Reader, passReader io.Reader) (io.Reader, error) {
 
 	var (
 		entityList openpgp.EntityList

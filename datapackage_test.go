@@ -1,4 +1,4 @@
-package packer
+package datapackage
 
 import (
 	"bytes"
@@ -147,7 +147,6 @@ func testPacker(t *testing.T, gpg bool, gpgLocalPublic bool) {
 	var te = NewTestEnv(t, gpg)
 
 	c := new(Config)
-	c.DataDirPath = te.DataDir
 	c.PackagePath = te.PackagePath
 	if gpg {
 		c.KeyPassPath = te.PrivateKeyPassphrasePath

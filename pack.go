@@ -1,4 +1,4 @@
-package packer
+package datapackage
 
 import (
 	"archive/tar"
@@ -16,9 +16,9 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
-// WriteHeader writes a new file header to the package and prepares to writes
+// writeTarHeader writes a new file header to the package and prepares to write
 // that new file's data on the next write.
-func (p *Package) writeTarHeader(fi os.FileInfo, path string) error {
+func (d *DataPackage) writeTarHeader(fi os.FileInfo, path string) error {
 	var (
 		tarHeader *tar.Header
 		err       error
@@ -33,74 +33,74 @@ func (p *Package) writeTarHeader(fi os.FileInfo, path string) error {
 
 	// Call the WriteHeader method, which prepares the already existing
 	// writer to receive another file.
-	if err = p.tarWriteCloser.WriteHeader(tarHeader); err != nil {
+	if err = d.tarWriteCloser.WriteHeader(tarHeader); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// Write writes data to the current entry in the package.
-func (p *Package) Write(b []byte) (int, error) {
-	return p.tarWriteCloser.Write(b)
+// write writes data to the current entry in the package.
+func (d *DataPackage) write(b []byte) (int, error) {
+	return d.tarWriteCloser.Write(b)
 }
 
-// FinishPack closes the package, flushing any unwritten data.
-func (p *Package) FinishPack() error {
+// finishPack closes the package, flushing any unwritten data.
+func (d *DataPackage) finishPack() error {
 	var err error
 
-	if err = p.tarWriteCloser.Close(); err != nil {
+	if err = d.tarWriteCloser.Close(); err != nil {
 		return err
 	}
 
-	if err = p.gzipWriteCloser.Close(); err != nil {
+	if err = d.gzipWriteCloser.Close(); err != nil {
 		return err
 	}
 
-	if p.encWriteCloser != nil {
-		if err = p.encWriteCloser.Close(); err != nil {
+	if d.encWriteCloser != nil {
+		if err = d.encWriteCloser.Close(); err != nil {
 			return err
 		}
 	}
 
-	if err = p.outWriteCloser.Close(); err != nil {
+	if err = d.outWriteCloser.Close(); err != nil {
 		return err
 	}
 
-  if p.keyReader != nil {
-    if err = p.keyReader.Close(); err != nil {
-      return err
-    }
-  }
+	if d.keyReader != nil {
+		if err = d.keyReader.Close(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func (p *Package) encryptionKeyReader() (io.Reader, error) {
+func (d *DataPackage) encryptionKeyReader() (io.Reader, error) {
 
 	var err error
 
-	if p.keyPath != "" {
+	if d.keyPath != "" {
 
-		p.keyReader, err = os.Open(p.keyPath)
+		d.keyReader, err = os.Open(d.keyPath)
 		if err != nil {
-			return nil, fmt.Errorf("encryptionKeyReader: error opening p.keyPath: %v", err)
+			return nil, fmt.Errorf("encryptionKeyReader: error opening d.keyPath: %v", err)
 		}
 
-		return io.Reader(p.keyReader), nil
+		return io.Reader(d.keyReader), nil
 
-	} else if p.publicKeyEmail != "" {
+	} else if d.publicKeyEmail != "" {
 
 		gpgQueryTemplate := "http://pool.sks-keyservers.net:11371/pks/lookup?search={{EMAIL}}&op=get&options=mr"
-		email := url.QueryEscape(p.publicKeyEmail)
+		email := url.QueryEscape(d.publicKeyEmail)
 		gpgQuery := strings.Replace(gpgQueryTemplate, "{{EMAIL}}", email, 1)
 
 		response, err := http.Get(gpgQuery)
 		if err != nil {
 			return nil, fmt.Errorf("Error fetching public key from pool.sks-keyservers.net:11371: %v", err)
 		}
-		p.keyReader = response.Body
-		return p.keyReader, nil
+		d.keyReader = response.Body
+		return d.keyReader, nil
 
 	} else {
 		return nil, errors.New("Either KeyPath or PublicKeyEmail must be specified")
@@ -109,13 +109,15 @@ func (p *Package) encryptionKeyReader() (io.Reader, error) {
 
 // makeFilePackFunc returns a filepath.WalkFunc that packs files in the basePath
 // directory using the passed writer.
-func (p *Package) makeFilePackFunc(basePath string) filepath.WalkFunc {
+func (d *DataPackage) makeFilePackFunc(basePath string) filepath.WalkFunc {
 
-	return func(path string, fi os.FileInfo, inErr error) (err error) {
+	return func(path string, fi os.FileInfo, inErr error) error {
 
 		var (
 			relPath string
 			r       *os.File
+			buf     []byte
+			err     error
 		)
 
 		// Return an error passed by filepath.Walk.
@@ -139,7 +141,7 @@ func (p *Package) makeFilePackFunc(basePath string) filepath.WalkFunc {
 		}
 
 		// Write file header to writer, preparing for writing of new file.
-		if err = p.writeTarHeader(fi, relPath); err != nil {
+		if err = d.writeTarHeader(fi, relPath); err != nil {
 			return err
 		}
 
@@ -151,19 +153,40 @@ func (p *Package) makeFilePackFunc(basePath string) filepath.WalkFunc {
 		defer r.Close()
 
 		// Copy data file to writer.
-		log.Printf("packer: writing '%s' to package", fi.Name())
+		log.Printf("writing '%s' to data package", fi.Name())
 
-		if _, err = io.Copy(p, r); err != nil {
-			return err
+		buf = make([]byte, 32*1024)
+
+		for {
+			nr, er := r.Read(buf)
+			if nr > 0 {
+				nw, ew := d.write(buf[0:nr])
+				if ew != nil {
+					err = ew
+					break
+				}
+				if nr != nw {
+					err = errors.New("short write")
+					break
+				}
+			}
+			if er == io.EOF {
+				break
+			}
+			if er != nil {
+				err = er
+				break
+			}
 		}
 
-		return nil
+		return err
+
 	}
 
 }
 
 // Pack writes the data files at base path into a package.
-func (p *Package) Pack(dataDirPath string) error {
+func (d *DataPackage) Pack(dataDirPath string) error {
 
 	var (
 		err          error
@@ -172,52 +195,52 @@ func (p *Package) Pack(dataDirPath string) error {
 
 	// Open the first level of writer, keeping the API for writing and closing
 	// to it consistent regardless of the underlying implementation.
-	if p.packagePath != "" {
-		if p.outWriteCloser, err = os.OpenFile(p.packagePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644); err != nil {
+	if d.packagePath != "" {
+		if d.outWriteCloser, err = os.OpenFile(d.packagePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644); err != nil {
 			return err
 		}
 	} else {
-		p.outWriteCloser = os.Stdout
+		d.outWriteCloser = os.Stdout
 	}
 
 	// Open the encryption writer if desired
-	if p.gpgInUse() {
+	if d.gpgInUse() {
 
-		keyReader, err := p.encryptionKeyReader()
+		keyReader, err := d.encryptionKeyReader()
 		if err != nil {
 			return err
 		}
-		if p.encWriteCloser, err = Encrypt(p.outWriteCloser, keyReader); err != nil {
+		if d.encWriteCloser, err = encrypt(d.outWriteCloser, keyReader); err != nil {
 			return err
 		}
 
 	}
 
-	if p.encWriteCloser != nil {
-		p.gzipWriteCloser = gzip.NewWriter(p.encWriteCloser)
-		p.tarWriteCloser = tar.NewWriter(p.gzipWriteCloser)
+	if d.encWriteCloser != nil {
+		d.gzipWriteCloser = gzip.NewWriter(d.encWriteCloser)
+		d.tarWriteCloser = tar.NewWriter(d.gzipWriteCloser)
 	} else {
-		p.gzipWriteCloser = gzip.NewWriter(p.outWriteCloser)
-		p.tarWriteCloser = tar.NewWriter(p.gzipWriteCloser)
+		d.gzipWriteCloser = gzip.NewWriter(d.outWriteCloser)
+		d.tarWriteCloser = tar.NewWriter(d.gzipWriteCloser)
 	}
 
 	// Make a filepath.WalkFunc to pack files into the package.
-	filePackFunc = p.makeFilePackFunc(dataDirPath)
+	filePackFunc = d.makeFilePackFunc(dataDirPath)
 
 	// Write the files into a package.
 	if err := filepath.Walk(dataDirPath, filePackFunc); err != nil {
 		return err
 	}
 
-	p.FinishPack() // flush and close
+	d.finishPack() // flush and close
 
 	return nil
 }
 
-// Encrypt takes a writer to encrypt data onto and a reader containing the
+// encrypt takes a writer to encrypt data onto and a reader containing the
 // ASCII-armored public key to encrypt with and returns a WriteCloser to write
 // onto and close. It assumes there is only one OpenPGP entity involved.
-func Encrypt(plainWriter io.Writer, keyReader io.Reader) (io.WriteCloser, error) {
+func encrypt(plainWriter io.Writer, keyReader io.Reader) (io.WriteCloser, error) {
 
 	var (
 		entityList openpgp.EntityList

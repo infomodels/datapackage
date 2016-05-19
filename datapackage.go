@@ -1,17 +1,20 @@
-package packer
+// Provides methods for packing directories into compressed and optionally
+// encrypted files as well as unpacking those files into directories.
+package datapackage
 
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"io"
 	"os"
 )
 
-// Package encapsulates all the logic and functionality for reading
-// and writing packages.
-type Package struct {
+// DataPackage represents a compressed and optionally encrypted file that may
+// or may not exist on disk, yet.
+type DataPackage struct {
 	// Input state
-	packagePath string // Filename of existing or intended data package
+	packagePath string // Filename of existing or intended data package.
 
 	// GPG-related things
 	keyPath        string // Path to public key file for encrypting or private key file for decrypting
@@ -30,18 +33,22 @@ type Package struct {
 	keyReader       io.ReadCloser
 }
 
-// New takes a Config object and returns a properly configured Package
+// New takes a Config object and returns a properly configured DataPackage
 // that is ready to use.
-func New(cfg *Config) (*Package, error) {
+func New(cfg *Config) (*DataPackage, error) {
 
-	var p = new(Package)
+	if cfg.PackagePath == "" {
+		return nil, errors.New("DataPackage instantiation requires Config.PackagePath")
+	}
 
-	p.packagePath = cfg.PackagePath
-	p.keyPath = cfg.KeyPath
-	p.publicKeyEmail = cfg.PublicKeyEmail
-	p.keyPassPath = cfg.KeyPassPath
+	var d = new(DataPackage)
 
-	return p, nil
+	d.packagePath = cfg.PackagePath
+	d.keyPath = cfg.KeyPath
+	d.publicKeyEmail = cfg.PublicKeyEmail
+	d.keyPassPath = cfg.KeyPassPath
+
+	return d, nil
 }
 
 // functions or methods shared by pack and unpack
@@ -57,7 +64,6 @@ func keyReader(keyPath string) (io.Reader, error) {
 	return io.Reader(keyReaderFile), nil
 }
 
-func (p *Package) gpgInUse() bool {
-	return p.keyPath != "" || p.publicKeyEmail != ""
-	return FileNameHasGPG(p.packagePath)
+func (d *DataPackage) gpgInUse() bool {
+	return d.keyPath != "" || d.publicKeyEmail != "" || fileNameHasGPG(d.packagePath)
 }
