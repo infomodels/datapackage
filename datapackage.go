@@ -5,21 +5,34 @@ package datapackage
 import (
 	"archive/tar"
 	"compress/gzip"
-	"errors"
 	"io"
 	"os"
+	"strings"
 )
 
 // DataPackage represents a compressed and optionally encrypted file that may
 // or may not exist on disk, yet.
+//
+// PackagePath is the full path to the data package file, which may or may not
+// exist, yet. If it is empty, the package will be Packed or Unpacked to
+// STDOUT or from STDIN, respectively.
+//
+// KeyPath is the full path to a file holding an ASCII-armored GPG key
+// for encryption or decryption (in which case the file must contain both
+// public and private keys).
+//
+// PublicKeyEmail is the email associated with a public key uploaded to a key
+// server and can be used in place of KeyPath for encryption. If both are
+// given, KeyPath is used instead.
+//
+// KeyPassPath is the full path to a file holding the password for the key.
+// The password can alternatively be exported to the PACKER_KEYPASS environment
+// variable. The environment variable is preferred if both are given.
 type DataPackage struct {
-	// Input state
-	packagePath string // Filename of existing or intended data package.
-
-	// GPG-related things
-	keyPath        string // Path to public key file for encrypting or private key file for decrypting
-	publicKeyEmail string // Email of public key for lookup on remote keyserver (alternative to keyPath)
-	keyPassPath    string // Path to file containing passphrase for the private key
+	PackagePath    string // Filename of existing or intended data package.
+	KeyPath        string // Path to public key file for encrypting or private key file for decrypting
+	PublicKeyEmail string // Email of public key for lookup on remote keyserver (alternative to KeyPath)
+	KeyPassPath    string // Path to file containing passphrase for the private key
 
 	// Working properties
 	outWriteCloser  io.WriteCloser
@@ -31,24 +44,6 @@ type DataPackage struct {
 	encReader       io.Reader
 	inReadCloser    io.ReadCloser
 	keyReader       io.ReadCloser
-}
-
-// New takes a Config object and returns a properly configured DataPackage
-// that is ready to use.
-func New(cfg *Config) (*DataPackage, error) {
-
-	if cfg.PackagePath == "" {
-		return nil, errors.New("DataPackage instantiation requires Config.PackagePath")
-	}
-
-	var d = new(DataPackage)
-
-	d.packagePath = cfg.PackagePath
-	d.keyPath = cfg.KeyPath
-	d.publicKeyEmail = cfg.PublicKeyEmail
-	d.keyPassPath = cfg.KeyPassPath
-
-	return d, nil
 }
 
 // functions or methods shared by pack and unpack
@@ -65,5 +60,10 @@ func keyReader(keyPath string) (io.Reader, error) {
 }
 
 func (d *DataPackage) gpgInUse() bool {
-	return d.keyPath != "" || d.publicKeyEmail != "" || fileNameHasGPG(d.packagePath)
+	return d.KeyPath != "" || d.PublicKeyEmail != "" || fileNameHasGPG(d.PackagePath)
+}
+
+// fileNameHasGPG returns true if filename ends in .gpg (case-insensitive)
+func fileNameHasGPG(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".gpg")
 }

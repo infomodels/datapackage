@@ -1,44 +1,13 @@
-package datapackage
+package datapackage_test
 
 import (
-	"bytes"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/infomodels/datapackage"
 )
-
-// TestEncrypt tests the packer.Encrypt functionality.
-func TestEncrypt(t *testing.T) {
-	in := new(bytes.Buffer)
-
-	encMsg, err := Encrypt(in, strings.NewReader(keyRing))
-	if err != nil {
-		t.Fatalf("packer tests: error adding encryption: %s", err)
-	}
-
-	_, err = encMsg.Write([]byte(testMsg))
-	if err != nil {
-		t.Fatalf("packer tests: error writing message: %s", err)
-	}
-	encMsg.Close()
-
-	decMsg, err := Decrypt(in, strings.NewReader(keyRing), strings.NewReader(keyPass))
-	if err != nil {
-		t.Fatalf("packer test: error adding decryption: %s", err)
-	}
-
-	out, err := ioutil.ReadAll(decMsg)
-	if err != nil {
-		t.Fatalf("packer test: error decrypting message: %s", err)
-	}
-
-	if string(out) != testMsg {
-		t.Fatalf("packer tests: round-trip message (%s) does not equal original (%s)", string(out), testMsg)
-	}
-
-}
 
 const testMsg = `A test message`
 
@@ -144,37 +113,38 @@ func fatal(t *testing.T, msg string, err error, gpg bool, gpgLocalPublic bool) {
 // testPacker tests Pack and Unpack given gpg-related parameters
 func testPacker(t *testing.T, gpg bool, gpgLocalPublic bool) {
 
-	var te = NewTestEnv(t, gpg)
+	var (
+		te  *TestEnv
+		d   *datapackage.DataPackage
+		err error
+	)
 
-	c := new(Config)
-	c.PackagePath = te.PackagePath
+	te = NewTestEnv(t, gpg)
+	d = new(datapackage.DataPackage)
+
+	d.PackagePath = te.PackagePath
 	if gpg {
-		c.KeyPassPath = te.PrivateKeyPassphrasePath
+		d.KeyPassPath = te.PrivateKeyPassphrasePath
 		if gpgLocalPublic {
-			c.KeyPath = te.PublicKeyFilePath
-			// p.KeyPath will have to be changed prior to the Unpack operation to point to the private key; this is is a test-only hack
+			d.KeyPath = te.PublicKeyFilePath
+			// d.KeyPath will have to be changed prior to the Unpack operation to point to the private key
 		} else {
-			c.PublicKeyEmail = "testy@test.er"
+			d.PublicKeyEmail = "testy@test.er"
 		}
 	}
 
-	p, err := New(c)
-	if err != nil {
-		fatal(t, "error creating new package object", err, gpg, gpgLocalPublic)
-	}
-
-	if err := p.Pack(te.DataDir); err != nil {
+	if err = d.Pack(te.DataDir); err != nil {
 		fatal(t, "error packing file", err, gpg, gpgLocalPublic)
 	}
 
-	if _, err := os.Stat(te.PackagePath); os.IsNotExist(err) {
+	if _, err = os.Stat(te.PackagePath); os.IsNotExist(err) {
 		fatal(t, "package not produced", err, gpg, gpgLocalPublic)
 	}
 
 	if gpg {
-		p.keyPath = te.PrivateKeyFilePath
+		d.KeyPath = te.PrivateKeyFilePath
 	}
-	if err := p.Unpack(te.UnpackDataDir); err != nil {
+	if err = d.Unpack(te.UnpackDataDir); err != nil {
 		fatal(t, "error unpacking file", err, gpg, gpgLocalPublic)
 	}
 
@@ -187,6 +157,25 @@ func TestPacker(t *testing.T) {
 	testPacker(t, false, false) // test Pack and Unpack with no gpg
 	testPacker(t, true, true)   // test Pack and Unpack with a local public gpg key file (KeyPath)
 	testPacker(t, true, false)  // test Pack and Unpack with a lookup of a public key from a keyserver
+}
+
+func ExampleDataPackage_Pack() {
+	d := &datapackage.DataPackage{
+		PackagePath:    "/home/user/datapackage.tar.gz.gpg",
+		PublicKeyEmail: "testy@test.er",
+	}
+
+	d.Pack("/home/user/datadirectory")
+}
+
+func ExampleDataPackage_Unpack() {
+	d := &datapackage.DataPackage{
+		PackagePath: "/home/user/datapackage.tar.gz.gpg",
+		KeyPath:     "/home/user/keys/public_and_private.asc",
+		KeyPassPath: "/home/user/keys/pass.txt",
+	}
+
+	d.Unpack("/home/user/datadirectory")
 }
 
 // Email address used for test key pair below

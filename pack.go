@@ -80,19 +80,19 @@ func (d *DataPackage) encryptionKeyReader() (io.Reader, error) {
 
 	var err error
 
-	if d.keyPath != "" {
+	if d.KeyPath != "" {
 
-		d.keyReader, err = os.Open(d.keyPath)
+		d.keyReader, err = os.Open(d.KeyPath)
 		if err != nil {
 			return nil, fmt.Errorf("encryptionKeyReader: error opening d.keyPath: %v", err)
 		}
 
 		return io.Reader(d.keyReader), nil
 
-	} else if d.publicKeyEmail != "" {
+	} else if d.PublicKeyEmail != "" {
 
 		gpgQueryTemplate := "http://pool.sks-keyservers.net:11371/pks/lookup?search={{EMAIL}}&op=get&options=mr"
-		email := url.QueryEscape(d.publicKeyEmail)
+		email := url.QueryEscape(d.PublicKeyEmail)
 		gpgQuery := strings.Replace(gpgQueryTemplate, "{{EMAIL}}", email, 1)
 
 		response, err := http.Get(gpgQuery)
@@ -195,8 +195,8 @@ func (d *DataPackage) Pack(dataDirPath string) error {
 
 	// Open the first level of writer, keeping the API for writing and closing
 	// to it consistent regardless of the underlying implementation.
-	if d.packagePath != "" {
-		if d.outWriteCloser, err = os.OpenFile(d.packagePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644); err != nil {
+	if d.PackagePath != "" {
+		if d.outWriteCloser, err = os.OpenFile(d.PackagePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644); err != nil {
 			return err
 		}
 	} else {
@@ -216,6 +216,9 @@ func (d *DataPackage) Pack(dataDirPath string) error {
 
 	}
 
+	// BUG(aaron0browne): The .tar.gz format compressed packages output by
+	// DataPackage.Pack cannot be read by standard tar and gzip tools. The
+	// authors believe this is due to the underlying library implementations.
 	if d.encWriteCloser != nil {
 		d.gzipWriteCloser = gzip.NewWriter(d.encWriteCloser)
 		d.tarWriteCloser = tar.NewWriter(d.gzipWriteCloser)

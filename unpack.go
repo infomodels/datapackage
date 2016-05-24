@@ -60,16 +60,16 @@ func (d *DataPackage) makeDecryptingReader() (io.Reader, error) {
 		err              error
 	)
 
-	d.keyReader, err = os.Open(d.keyPath)
+	d.keyReader, err = os.Open(d.KeyPath)
 	if err != nil {
 		return nil, err
 	}
 
 	passReader = strings.NewReader("")
 
-	if d.keyPassPath != "" {
+	if d.KeyPassPath != "" {
 
-		if passFile, err = os.Open(d.keyPassPath); err != nil {
+		if passFile, err = os.Open(d.KeyPassPath); err != nil {
 			return nil, err
 		}
 
@@ -95,10 +95,10 @@ func (d *DataPackage) Unpack(dataDirPath string) error {
 
 	var err error
 
-	if d.packagePath != "" {
+	if d.PackagePath != "" {
 
 		// Open the basic file reader.
-		if d.inReadCloser, err = os.Open(d.packagePath); err != nil {
+		if d.inReadCloser, err = os.Open(d.PackagePath); err != nil {
 			return fmt.Errorf("Error opening package path: %v", err)
 		}
 
@@ -110,7 +110,7 @@ func (d *DataPackage) Unpack(dataDirPath string) error {
 	}
 
 	// Add decryption to the reader if necessary.
-	if d.keyPath != "" {
+	if d.KeyPath != "" {
 
 		if d.encReader, err = d.makeDecryptingReader(); err != nil {
 			return fmt.Errorf("makeDecryptingReader() failed: %v", err)
