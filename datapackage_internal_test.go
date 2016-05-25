@@ -1,6 +1,7 @@
-package packer
+package datapackage
 
 import (
+	"bytes"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -8,15 +9,48 @@ import (
 	"golang.org/x/crypto/openpgp/armor"
 )
 
-// TestDecrypt tests the packer.Decrypt functionality.
+// TestEncrypt tests the datapackage.encrypt functionality.
+func TestEncrypt(t *testing.T) {
+	in := new(bytes.Buffer)
+
+	encMsg, err := encrypt(in, strings.NewReader(keyRing))
+	if err != nil {
+		t.Fatalf("packer tests: error adding encryption: %s", err)
+	}
+
+	_, err = encMsg.Write([]byte(testMsg))
+	if err != nil {
+		t.Fatalf("packer tests: error writing message: %s", err)
+	}
+	encMsg.Close()
+
+	decMsg, err := decrypt(in, strings.NewReader(keyRing), strings.NewReader(keyPass))
+	if err != nil {
+		t.Fatalf("packer test: error adding decryption: %s", err)
+	}
+
+	out, err := ioutil.ReadAll(decMsg)
+	if err != nil {
+		t.Fatalf("packer test: error decrypting message: %s", err)
+	}
+
+	if string(out) != testMsg {
+		t.Fatalf("packer tests: round-trip message (%s) does not equal original (%s)", string(out), testMsg)
+	}
+
+}
+
+const testMsg = `A test message`
+
+// TestDecrypt tests the datapackage.decrypt functionality.
 func TestDecrypt(t *testing.T) {
-	// Un-armor encrypted message as that's what Decrypt expects.
+	// Un-armor encrypted message as that's what decrypt expects.
 	encMsg, err := armor.Decode(strings.NewReader(msgEnc))
 	if err != nil {
 		t.Fatalf("packer tests: error ASCII decoding encrypted message: %s", err)
 	}
 
-	r, err := Decrypt(encMsg.Body, strings.NewReader(keyRing), strings.NewReader(keyPass))
+	r, err := decrypt(encMsg.Body, strings.NewReader(keyRing), strings.NewReader(keyPass))
 	if err != nil {
 		t.Fatalf("packer tests: error adding decryption: %s", err)
 	}

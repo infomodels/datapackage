@@ -1,0 +1,5 @@
+package: github.com/infomodels/datapackage
+import:
+- package: golang.org/x/crypto
+  subpackages:
+  - openpgp
