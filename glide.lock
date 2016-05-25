@@ -1,0 +1,14 @@
+hash: 9a5bf623a14874c20e88c6559429feef320920f45792b170f8812f793acebf93
+updated: 2016-05-24T12:57:40.228703358-04:00
+imports:
+- name: golang.org/x/crypto
+  version: 5bcd134fee4dd1475da17714aac19c0aa0142e2f
+  subpackages:
+  - openpgp
+  - openpgp/armor
+  - openpgp/errors
+  - openpgp/packet
+  - openpgp/s2k
+  - cast5
+  - openpgp/elgamal
+devImports: []

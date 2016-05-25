@@ -1,38 +1,19 @@
-machine:
-  environment:
-    # Make CircleCI specific environment variables more generic.
-    ARTIFACT_DIR: "${CIRCLE_ARTIFACTS}"
-    TEST_OUTPUT_DIR: "${CIRCLE_TEST_REPORTS}"
-    GO_SRC_PATH: "/home/ubuntu/.go_workspace/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
-
-dependencies:
-  override:
-    # Install coverage, coveralls integration, and html coverage dependencies.
-    - go get github.com/axw/gocov/gocov
-    - go get github.com/mattn/goveralls
-    - go get gopkg.in/matm/v1/gocov-html
-    - go get github.com/jstemmer/go-junit-report
-    - go get github.com/blang/semver
-    - go get golang.org/x/crypto/openpgp
-    # Move source code to the GOPATH.
-    - mkdir -p "${GO_SRC_PATH}"
-    - rsync -azC --delete ./ "${GO_SRC_PATH}/"
-    # Install and build the package.
-    - cd "${GO_SRC_PATH}" && go install
-
 test:
-  override:
-    # Create test output directory.
-    - mkdir -p "${TEST_OUTPUT_DIR}/gotest"
-    # Run tests outputting coverage and jUnit XML data.
-    - cd "${GO_SRC_PATH}" && go test -v
-      -coverprofile="${ARTIFACT_DIR}/packer.out" | go-junit-report >
-      "${TEST_OUTPUT_DIR}/gotest/packer.xml"
-  post:
-    # Convert to gocov format.
-    - gocov convert "${ARTIFACT_DIR}/packer.out" > "${ARTIFACT_DIR}/packer.json"
-    # Convert to html.
-    - gocov-html "${ARTIFACT_DIR}/packer.json" > "${ARTIFACT_DIR}/packer.html"
-    # Submit to coveralls.
-    - goveralls -coverprofile="${ARTIFACT_DIR}/packer.out" -service=circle-ci
-      -repotoken="${COVERALLS_TOKEN}"
+    pre:
+        # Install coverage, coveralls integration, and html coverage
+        # dependencies.
+        - go get github.com/axw/gocov/gocov
+        - go get github.com/jstemmer/go-junit-report
+        - go get github.com/mattn/goveralls
+        - go get gopkg.in/matm/v1/gocov-html
+    override:
+        # Run tests outputting coverage and jUnit XML data.
+        - go test -v -race -coverprofile="${CIRCLE_ARTIFACTS}/tests.out"
+          ./... | go-junit-report > "${CIRCLE_TEST_REPORTS}/tests.xml"
+    post:
+        # Convert test output to gocov JSON and then html output.
+        - gocov convert "${CIRCLE_ARTIFACTS}/tests.out" |
+          gocov-html > "${CIRCLE_ARTIFACTS}/tests.html"
+        # Submit to coverage to coveralls.
+        - goveralls -coverprofile="${CIRCLE_ARTIFACTS}/tests.out"
+          -service=circle-ci -repotoken="${COVERALLS_TOKEN}"
